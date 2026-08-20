@@ -6,7 +6,9 @@ export const getOrdersTool: BusinessTool<
   { orders: typeof mockOrders }
 > = {
   name: "get_orders",
+  version: "1.0.0",
   description: "获取指定客户的订单列表。",
+  permissions: ["order:read"],
   inputSchema: {
     type: "object",
     properties: { customerId: { type: "string", description: "客户 ID" } },

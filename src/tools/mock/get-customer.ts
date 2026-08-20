@@ -6,7 +6,9 @@ export const getCustomerTool: BusinessTool<
   typeof mockCustomer
 > = {
   name: "get_customer",
+  version: "1.0.0",
   description: "根据客户 ID 获取客户基础资料。",
+  permissions: ["customer:read"],
   inputSchema: {
     type: "object",
     properties: { customerId: { type: "string", description: "客户 ID" } },

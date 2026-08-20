@@ -1,7 +1,9 @@
 export interface RuntimeEventBase {
   readonly runId: string;
+  readonly traceId: string;
   readonly conversationId: string;
   readonly agentId: string;
+  readonly agentVersion: string;
   readonly timestamp: string;
 }
 
@@ -21,11 +23,13 @@ export type RuntimeEvent =
       readonly type: "tool.started";
       readonly toolCallId: string;
       readonly toolName: string;
+      readonly toolVersion: string;
     })
   | (RuntimeEventBase & {
       readonly type: "tool.completed";
       readonly toolCallId: string;
       readonly toolName: string;
+      readonly toolVersion: string;
       readonly result: unknown;
       readonly durationMs: number;
     })
@@ -33,6 +37,7 @@ export type RuntimeEvent =
       readonly type: "tool.failed";
       readonly toolCallId: string;
       readonly toolName: string;
+      readonly toolVersion: string;
       readonly error: { readonly code: string; readonly message: string };
       readonly durationMs: number;
     })

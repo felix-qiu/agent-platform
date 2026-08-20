@@ -13,8 +13,10 @@ describe("AgentRuntime contract", () => {
       async *run(input: AgentRunInput): AsyncIterable<RuntimeEvent> {
         const base = {
           runId: "run_1",
+          traceId: "trace_1",
           conversationId: input.conversationId,
           agentId: input.agent.id,
+          agentVersion: input.agent.version,
           timestamp: new Date(0).toISOString(),
         };
         yield { ...base, type: "run.started", agentId: input.agent.id };

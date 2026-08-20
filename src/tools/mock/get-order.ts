@@ -5,7 +5,9 @@ type MockOrder = (typeof mockOrders)[number];
 
 export const getOrderTool: BusinessTool<{ orderId: string }, MockOrder> = {
   name: "get_order",
+  version: "1.0.0",
   description: "根据订单 ID 获取订单详情与状态。",
+  permissions: ["order:read"],
   inputSchema: {
     type: "object",
     properties: { orderId: { type: "string", description: "订单 ID" } },

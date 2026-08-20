@@ -14,6 +14,7 @@ export interface ConversationMessage {
 export interface Conversation {
   readonly id: string;
   readonly agentId: string;
+  readonly agentVersion: string;
   readonly status: ConversationStatus;
   readonly messages: readonly ConversationMessage[];
   readonly createdAt: string;
@@ -22,12 +23,14 @@ export interface Conversation {
 
 export function newConversation(
   agentId: string,
+  agentVersion: string,
   now = new Date(),
 ): Conversation {
   const timestamp = now.toISOString();
   return {
     id: randomUUID(),
     agentId,
+    agentVersion,
     status: "active",
     messages: [],
     createdAt: timestamp,

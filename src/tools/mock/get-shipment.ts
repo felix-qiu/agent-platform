@@ -6,7 +6,9 @@ export const getShipmentTool: BusinessTool<
   typeof mockShipment
 > = {
   name: "get_shipment",
+  version: "1.0.0",
   description: "根据订单 ID 获取承运商、运单号和最新物流状态。",
+  permissions: ["shipment:read"],
   inputSchema: {
     type: "object",
     properties: { orderId: { type: "string", description: "订单 ID" } },

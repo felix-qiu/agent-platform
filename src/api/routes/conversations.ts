@@ -41,9 +41,14 @@ export async function registerConversationRoutes(
             logger.info(
               {
                 conversationId,
+                traceId: event.traceId,
                 agentId: event.agentId,
+                agentVersion: event.agentVersion,
                 event: event.type,
                 ...("toolName" in event ? { toolName: event.toolName } : {}),
+                ...("toolVersion" in event
+                  ? { toolVersion: event.toolVersion }
+                  : {}),
                 ...("durationMs" in event
                   ? { duration: event.durationMs }
                   : {}),

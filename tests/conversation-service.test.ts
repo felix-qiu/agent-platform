@@ -3,14 +3,17 @@ import { createCustomerServiceAgent } from "../src/agents/customer-service/index
 import { ConversationService } from "../src/conversations/conversation-service.js";
 import { InMemoryConversationRepository } from "../src/conversations/in-memory-conversation-repository.js";
 import { FakeRuntime } from "../src/runtime/fake-runtime.js";
+import { InMemoryTraceRepository } from "../src/observability/in-memory-trace-repository.js";
 
 describe("ConversationService", () => {
   it("runs an agent turn and persists user, tool and assistant messages", async () => {
     const repository = new InMemoryConversationRepository();
+    const traces = new InMemoryTraceRepository();
     const service = new ConversationService(
       repository,
       new FakeRuntime(),
       createCustomerServiceAgent(),
+      traces,
     );
     const conversation = await service.createConversation();
     const events = [];
@@ -33,5 +36,9 @@ describe("ConversationService", () => {
       "assistant",
     ]);
     expect(saved.messages.at(-1)?.content).toContain("已发货");
+    expect(saved.agentVersion).toBe("1.0.0");
+    const trace = await traces.getTrace(events[0]?.traceId ?? "");
+    expect(trace?.events).toHaveLength(events.length);
+    expect(trace?.agentVersion).toBe("1.0.0");
   });
 });

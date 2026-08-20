@@ -1,6 +1,6 @@
 # agent-platform
 
-`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成第一阶段 **M1 Runtime Skeleton**：以 Customer Service Agent 为首个业务 Agent，通过平台自有 Runtime 契约隔离 Pi，并跑通 Conversation、Mock Tool Calling、LLM Loop、Streaming 与 HTTP API。
+`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成 **M1.1 Hardening**：在 M1 Runtime Skeleton 主链路之上补齐版本追踪、Trace、Runtime 契约测试和 Evaluation 骨架，使 Runtime 基础可以长期维护和替换。
 
 ## M1 范围
 
@@ -12,6 +12,14 @@
 - `get_customer`、`get_orders`、`get_order`、`get_shipment` 确定性 Mock Tools
 - Tool Call 事件、文本增量与 SSE
 - 结构化日志、统一错误、单元测试和无真实 LLM 的端到端测试
+
+## M1.1 Hardening
+
+- **Runtime Contract Test**：同一套行为契约覆盖 `FakeRuntime` 与 `PiRuntimeAdapter`；Pi 使用内存 faux provider，不访问真实 LLM。
+- **Agent Version**：`AgentDefinition` 包含 `version`、`permissions`、`policies`，Conversation 固化 `agentId` 与 `agentVersion`。
+- **Tool Version**：Tool 包含 `version` 与 `permissions`，公开 Tool Event 携带 `toolVersion`。
+- **Trace Model**：每次 run 生成唯一 `traceId`，内存 Trace 保存 Conversation、Agent Version 与完整 RuntimeEvent 序列。
+- **Evaluation Skeleton**：最小 Golden Set 覆盖知识问答、订单查询、多轮上下文、Tool 失败和人工请求，由 `FakeRuntime` 确定性执行。
 
 ## 架构
 
@@ -41,11 +49,12 @@ src/
 ├── api/                Fastify 服务、路由和 SSE 输出
 ├── config/             环境变量校验
 ├── conversations/      Conversation 模型、Repository 与 Service
-├── observability/      脱敏结构化日志
+├── observability/      脱敏结构化日志与内存 Trace
 ├── runtime/            平台 Runtime 契约、FakeRuntime、Pi Adapter
 ├── shared/             统一错误
 └── tools/              Tool 契约与确定性 Mock Tools
-tests/                  单元、HTTP、SSE 与 Tool Loop 测试
+evals/                  Golden Set、Evaluation Case 与 Runner
+tests/                  单元、Runtime Contract、HTTP、SSE 与 Evaluation 测试
 ```
 
 ## 环境要求
@@ -148,16 +157,16 @@ pnpm build
 pnpm format
 ```
 
-测试使用 `FakeRuntime`，不访问真实 LLM。端到端用例会依次调用 `get_orders`、`get_order` 和 `get_shipment`，校验 SSE 事件及最终 Conversation 消息持久化。
+默认测试不访问真实 LLM。业务与 Evaluation 测试使用 `FakeRuntime`；Pi Runtime 契约测试使用 Pi 的内存 faux provider。端到端用例会依次调用 `get_orders`、`get_order` 和 `get_shipment`，校验 SSE、Tool Version、Trace 及最终 Conversation 消息持久化。
 
 ## Mock Tools
 
-| Tool           | 语义             | 主要确定性数据               |
-| -------------- | ---------------- | ---------------------------- |
-| `get_customer` | 查询客户         | `customer_001` / 张三        |
-| `get_orders`   | 查询客户订单列表 | `order_001`、`order_002`     |
-| `get_order`    | 查询单个订单     | `order_001.status = shipped` |
-| `get_shipment` | 查询物流         | 顺丰、运输中、最新节点       |
+| Tool           | Version | 语义             | 主要确定性数据               |
+| -------------- | ------- | ---------------- | ---------------------------- |
+| `get_customer` | `1.0.0` | 查询客户         | `customer_001` / 张三        |
+| `get_orders`   | `1.0.0` | 查询客户订单列表 | `order_001`、`order_002`     |
+| `get_order`    | `1.0.0` | 查询单个订单     | `order_001.status = shipped` |
+| `get_shipment` | `1.0.0` | 查询物流         | 顺丰、运输中、最新节点       |
 
 Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文件系统、数据库或 HTTP。M2 可在相同接口后替换为沙箱/真实业务实现。
 
@@ -168,6 +177,7 @@ Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文�
 ## Known Limitations
 
 - Conversation 使用进程内 Map，重启后数据丢失，也不适合多实例部署。
+- Trace 使用内存 Repository，重启后数据丢失；M1.1 不接数据库或外部 Trace Backend。
 - M1 不做同一 Conversation 的并发消息串行化和断线续传。
 - Pi 模型目录由安装版本提供；配置不存在的 provider/model 会以 `run.failed` 结束。
 - 真实模型的 Tool 选择质量依赖所选模型和 Provider；CI 只验证确定性的 FakeRuntime 主链路。

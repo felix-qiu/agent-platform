@@ -11,9 +11,15 @@ export function createCustomerServiceAgent(
   return {
     id: "customer-service",
     name: "Customer Service Agent",
+    version: "1.0.0",
     systemPrompt: customerServicePrompt,
     model,
     tools: mockBusinessTools,
-    version: "1.0.0-m1",
+    permissions: ["customer:read", "order:read", "shipment:read"],
+    policies: [
+      "ground-business-facts-in-tools",
+      "report-tool-failures-honestly",
+      "never-claim-unexecuted-actions",
+    ],
   };
 }

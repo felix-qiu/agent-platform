@@ -5,6 +5,7 @@ import { InMemoryConversationRepository } from "../conversations/in-memory-conve
 import { ConversationService } from "../conversations/conversation-service.js";
 import type { AgentRuntime } from "../runtime/agent-runtime.js";
 import { PiRuntimeAdapter } from "../runtime/pi-adapter/pi-runtime-adapter.js";
+import { InMemoryTraceRepository } from "../observability/in-memory-trace-repository.js";
 import { AppError, errorMessage } from "../shared/errors.js";
 import { registerConversationRoutes } from "./routes/conversations.js";
 import { registerHealthRoute } from "./routes/health.js";
@@ -26,7 +27,13 @@ export async function createApp(
       options.llmApiKey === undefined ? {} : { apiKey: options.llmApiKey },
     );
   const repository = new InMemoryConversationRepository();
-  const service = new ConversationService(repository, runtime, agent);
+  const traceRepository = new InMemoryTraceRepository();
+  const service = new ConversationService(
+    repository,
+    runtime,
+    agent,
+    traceRepository,
+  );
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof AppError) {

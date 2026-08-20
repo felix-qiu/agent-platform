@@ -16,8 +16,10 @@ export type ToolResult<T> =
 
 export interface BusinessTool<TInput = unknown, TOutput = unknown> {
   readonly name: string;
+  readonly version: string;
   readonly description: string;
   readonly inputSchema: JsonObjectSchema;
+  readonly permissions: readonly string[];
   execute(
     input: TInput,
     context: ToolExecutionContext,

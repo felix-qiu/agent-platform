@@ -1,6 +1,7 @@
 import type { AgentDefinition } from "../agents/agent-definition.js";
 import type { AgentRuntime } from "../runtime/agent-runtime.js";
 import type { RuntimeEvent } from "../runtime/runtime-events.js";
+import { newTrace, type TraceRepository } from "../observability/trace.js";
 import { AppError } from "../shared/errors.js";
 import {
   newConversation,
@@ -14,10 +15,13 @@ export class ConversationService {
     private readonly repository: ConversationRepository,
     private readonly runtime: AgentRuntime,
     private readonly agent: AgentDefinition,
+    private readonly traceRepository?: TraceRepository,
   ) {}
 
   async createConversation(): Promise<Conversation> {
-    return this.repository.createConversation(newConversation(this.agent.id));
+    return this.repository.createConversation(
+      newConversation(this.agent.id, this.agent.version),
+    );
   }
 
   async getConversation(id: string): Promise<Conversation> {
@@ -47,12 +51,20 @@ export class ConversationService {
     );
 
     let completedMessage: string | undefined;
+    let traceCreated = false;
     for await (const event of this.runtime.run({
       conversationId,
       agent: this.agent,
       messages: conversation.messages,
       context: {},
     })) {
+      if (this.traceRepository !== undefined) {
+        if (!traceCreated) {
+          await this.traceRepository.createTrace(newTrace(event));
+          traceCreated = true;
+        }
+        await this.traceRepository.appendEvent(event.traceId, event);
+      }
       if (event.type === "tool.completed") {
         await this.repository.appendMessage(
           conversationId,

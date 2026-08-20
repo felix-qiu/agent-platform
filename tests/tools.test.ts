@@ -27,6 +27,10 @@ describe("mock business tools", () => {
     );
 
     expect(customer).toMatchObject({ ok: true, data: { name: "张三" } });
+    expect(getCustomerTool).toMatchObject({
+      version: "1.0.0",
+      permissions: ["customer:read"],
+    });
     expect(orders.ok && orders.data.orders[0]?.id).toBe("order_001");
     expect(order).toMatchObject({ ok: true, data: { status: "shipped" } });
     expect(shipment).toMatchObject({ ok: true, data: { carrier: "顺丰速运" } });

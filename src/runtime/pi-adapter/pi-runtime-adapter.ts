@@ -5,7 +5,7 @@ import {
   type AgentMessage,
 } from "@earendil-works/pi-agent-core";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { Api, Model, Usage } from "@earendil-works/pi-ai";
+import type { Api, Model, MutableModels, Usage } from "@earendil-works/pi-ai";
 import type { AgentRuntime, AgentRunInput } from "../agent-runtime.js";
 import type { RuntimeEvent, RuntimeEventBase } from "../runtime-events.js";
 import { errorMessage } from "../../shared/errors.js";
@@ -26,25 +26,31 @@ export interface PiRuntimeAdapterOptions {
 }
 
 export class PiRuntimeAdapter implements AgentRuntime {
-  constructor(private readonly options: PiRuntimeAdapterOptions = {}) {}
+  constructor(
+    private readonly options: PiRuntimeAdapterOptions = {},
+    private readonly modelsFactory: () => MutableModels = builtinModels,
+  ) {}
 
   async *run(input: AgentRunInput): AsyncIterable<RuntimeEvent> {
     const runId = randomUUID();
+    const traceId = randomUUID();
     const startedAt = Date.now();
     const base = (): RuntimeEventBase => ({
       runId,
+      traceId,
       conversationId: input.conversationId,
       agentId: input.agent.id,
+      agentVersion: input.agent.version,
       timestamp: new Date().toISOString(),
     });
 
-    yield { ...base(), type: "run.started", agentId: input.agent.id };
+    yield { ...base(), type: "run.started" };
 
     const queue = new AsyncEventQueue<RuntimeEvent>();
     let failed = false;
     const execute = async (): Promise<void> => {
       try {
-        const models = builtinModels();
+        const models = this.modelsFactory();
         const model = models.getModel(
           input.agent.model.provider,
           input.agent.model.id,
@@ -81,8 +87,16 @@ export class PiRuntimeAdapter implements AgentRuntime {
         });
 
         const toolStartedAt = new Map<string, number>();
+        const toolVersions = new Map(
+          input.agent.tools.map((tool) => [tool.name, tool.version]),
+        );
         agent.subscribe((event) => {
-          for (const converted of convertPiEvent(event, base, toolStartedAt)) {
+          for (const converted of convertPiEvent(
+            event,
+            base,
+            toolStartedAt,
+            toolVersions,
+          )) {
             if (converted.type === "run.failed") failed = true;
             queue.push(converted);
           }
@@ -141,6 +155,7 @@ function convertPiEvent(
   event: AgentEvent,
   base: () => RuntimeEventBase,
   toolStartedAt: Map<string, number>,
+  toolVersions: ReadonlyMap<string, string>,
 ): RuntimeEvent[] {
   if (
     event.type === "message_update" &&
@@ -187,6 +202,7 @@ function convertPiEvent(
         type: "tool.started",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        toolVersion: requireToolVersion(event.toolName, toolVersions),
       },
     ];
   }
@@ -198,6 +214,7 @@ function convertPiEvent(
           type: "tool.failed",
           toolCallId: event.toolCallId,
           toolName: event.toolName,
+          toolVersion: requireToolVersion(event.toolName, toolVersions),
           error: {
             code: "TOOL_EXECUTION_FAILED",
             message: extractToolError(event.result),
@@ -212,12 +229,23 @@ function convertPiEvent(
         type: "tool.completed",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        toolVersion: requireToolVersion(event.toolName, toolVersions),
         result: extractToolDetails(event.result),
         durationMs: toolDuration(event.toolCallId, toolStartedAt),
       },
     ];
   }
   return [];
+}
+
+function requireToolVersion(
+  toolName: string,
+  versions: ReadonlyMap<string, string>,
+): string {
+  const version = versions.get(toolName);
+  if (version === undefined)
+    throw new Error(`Unknown tool version: ${toolName}`);
+  return version;
 }
 
 function toolDuration(
