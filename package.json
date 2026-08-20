@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.17.0",
   "description": "Customer service agent runtime skeleton",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -13,7 +14,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "engines": {
     "node": ">=22.19.0"

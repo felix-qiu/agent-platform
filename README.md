@@ -51,13 +51,13 @@ tests/                  单元、HTTP、SSE 与 Tool Loop 测试
 ## 环境要求
 
 - Node.js `>= 22.19.0`（当前 Pi `0.84.2` 的最低要求）
-- npm（随 Node.js 提供）
+- pnpm `11.17.0`
 - 任一 Pi 支持的模型 Provider API Key（仅真实模型运行需要）
 
 ## 安装与配置
 
 ```bash
-npm ci
+pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
@@ -84,14 +84,14 @@ LLM_API_KEY=your-key
 开发模式：
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 生产构建与启动：
 
 ```bash
-npm run build
-npm start
+pnpm build
+pnpm start
 ```
 
 健康检查：
@@ -128,16 +128,16 @@ curl -N \
 任何准备 push 到 GitHub 或提交 Pull Request 的代码，都必须先在本地执行：
 
 ```bash
-npm run check
+pnpm check
 ```
 
 `check` 与 GitHub Actions 的 `quality` job 使用完全相同的质量门槛，并按顺序执行：
 
 ```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 其中任意一步失败都必须修复根因后再提交，不应跳过测试、降低 TypeScript strict、禁用 lint 规则或使用 `continue-on-error`。CI 由 push 和 Pull Request 触发；`quality` 应配置为 GitHub Branch Protection 的 Required Status Check。
@@ -145,7 +145,7 @@ npm run build
 需要自动格式化文件时单独运行：
 
 ```bash
-npm run format
+pnpm format
 ```
 
 测试使用 `FakeRuntime`，不访问真实 LLM。端到端用例会依次调用 `get_orders`、`get_order` 和 `get_shipment`，校验 SSE 事件及最终 Conversation 消息持久化。
