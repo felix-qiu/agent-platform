@@ -36,9 +36,9 @@ describe("ConversationService", () => {
       "assistant",
     ]);
     expect(saved.messages.at(-1)?.content).toContain("已发货");
-    expect(saved.agentVersion).toBe("1.0.0");
+    expect(saved.agentVersion).toBe("2.0.0");
     const trace = await traces.getTrace(events[0]?.traceId ?? "");
     expect(trace?.events).toHaveLength(events.length);
-    expect(trace?.agentVersion).toBe("1.0.0");
+    expect(trace?.agentVersion).toBe("2.0.0");
   });
 });

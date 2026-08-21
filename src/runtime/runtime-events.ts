@@ -7,6 +7,12 @@ export interface RuntimeEventBase {
   readonly timestamp: string;
 }
 
+export interface KnowledgeMatchReference {
+  readonly id: string;
+  readonly source: string;
+  readonly score: number;
+}
+
 export type RuntimeEvent =
   | (RuntimeEventBase & {
       readonly type: "run.started";
@@ -39,6 +45,16 @@ export type RuntimeEvent =
       readonly toolName: string;
       readonly toolVersion: string;
       readonly error: { readonly code: string; readonly message: string };
+      readonly durationMs: number;
+    })
+  | (RuntimeEventBase & {
+      readonly type: "knowledge.search.started";
+      readonly provider: string;
+    })
+  | (RuntimeEventBase & {
+      readonly type: "knowledge.search.completed";
+      readonly provider: string;
+      readonly matches: readonly KnowledgeMatchReference[];
       readonly durationMs: number;
     })
   | (RuntimeEventBase & {

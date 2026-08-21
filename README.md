@@ -1,6 +1,6 @@
 # agent-platform
 
-`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成 **M1.1 Hardening**：在 M1 Runtime Skeleton 主链路之上补齐版本追踪、Trace、Runtime 契约测试和 Evaluation 骨架，使 Runtime 基础可以长期维护和替换。
+`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成 **M2 Grounded Support**：Customer Service Agent 通过 Knowledge Tool 和 Sandbox Business Provider，以企业知识和业务数据作为回答事实来源。
 
 ## M1 范围
 
@@ -21,6 +21,17 @@
 - **Trace Model**：每次 run 生成唯一 `traceId`，内存 Trace 保存 Conversation、Agent Version 与完整 RuntimeEvent 序列。
 - **Evaluation Skeleton**：最小 Golden Set 覆盖知识问答、订单查询、多轮上下文、Tool 失败和人工请求，由 `FakeRuntime` 确定性执行。
 
+## M2 Grounded Support
+
+- **Knowledge Provider**：统一 `search(query, context?)` 契约，结果包含来源、相关度、元数据与更新时间。
+- **search_knowledge Tool**：Agent 只能通过业务 Tool 检索知识，不能直接依赖 Knowledge Provider。
+- **Mock Knowledge Provider**：提供密码和账号修改的确定性企业知识，用于无真实 LLM 的 Grounding 测试。
+- **Business Adapter Layer**：客户、订单和物流 Tool 改为依赖 Provider Interface，默认使用 Sandbox Provider。
+- **Knowledge Trace**：`knowledge.search.started/completed` 记录 provider、source、score 和 Trace 关联。
+- **Grounding Evaluation**：验证必须检索、无知识不编造、订单事实来自 Tool、知识与模型冲突时 Knowledge 优先。
+
+预留的 Adapter 边界支持未来接入 RAGFlow、Open WebUI、Dify 或自建知识库；当前占位 Adapter 不包含第三方 SDK、网络调用或数据库依赖。
+
 ## 架构
 
 ```text
@@ -36,7 +47,11 @@ Pi Runtime Adapter
    ↓
 Pi Agent / LLM
    ↓
-Mock Business Tools
+[search_knowledge Tool | Business Tools]
+   ↓                         ↓
+Knowledge Provider       Business Provider
+   ↓                         ↓
+Mock Knowledge          Sandbox Customer/Order
 ```
 
 业务模块只依赖 `AgentRuntime` 和平台自有事件。只有 `src/runtime/pi-adapter` 可以导入 Pi 包；替换 Runtime 时，Agent、Tool、Conversation 和 API 无需跟随 Pi 类型重写。
@@ -47,8 +62,10 @@ Mock Business Tools
 src/
 ├── agents/             Agent Definition 与 Customer Service Prompt
 ├── api/                Fastify 服务、路由和 SSE 输出
+├── business/           Customer/Order Provider 与 Sandbox Adapter
 ├── config/             环境变量校验
 ├── conversations/      Conversation 模型、Repository 与 Service
+├── knowledge/          KnowledgeProvider、Mock 与第三方 Adapter 边界
 ├── observability/      脱敏结构化日志与内存 Trace
 ├── runtime/            平台 Runtime 契约、FakeRuntime、Pi Adapter
 ├── shared/             统一错误
@@ -130,7 +147,7 @@ curl -N \
   http://localhost:3000/v1/conversations/<conversation-id>/messages
 ```
 
-公开事件包括 `run.started`、`message.delta`、`message.completed`、`tool.started`、`tool.completed`、`tool.failed`、`run.completed` 和 `run.failed`。API 不发送 Prompt、隐藏推理、认证信息或完整敏感 Tool 参数。
+公开事件包括 `run.started`、`message.delta`、`message.completed`、`tool.*`、`knowledge.search.*`、`run.completed` 和 `run.failed`。Knowledge 完成事件只携带 provider、source、score 等依据摘要，不暴露 Prompt、隐藏推理、认证信息或敏感参数。
 
 ## 质量检查与 GitHub 提交规范
 
@@ -159,7 +176,7 @@ pnpm format
 
 默认测试不访问真实 LLM。业务与 Evaluation 测试使用 `FakeRuntime`；Pi Runtime 契约测试使用 Pi 的内存 faux provider。端到端用例会依次调用 `get_orders`、`get_order` 和 `get_shipment`，校验 SSE、Tool Version、Trace 及最终 Conversation 消息持久化。
 
-## Mock Tools
+## Sandbox Business Tools
 
 | Tool           | Version | 语义             | 主要确定性数据               |
 | -------------- | ------- | ---------------- | ---------------------------- |
@@ -168,11 +185,11 @@ pnpm format
 | `get_order`    | `1.0.0` | 查询单个订单     | `order_001.status = shipped` |
 | `get_shipment` | `1.0.0` | 查询物流         | 顺丰、运输中、最新节点       |
 
-Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文件系统、数据库或 HTTP。M2 可在相同接口后替换为沙箱/真实业务实现。
+Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文件系统、数据库或 HTTP。当前 Tool 调用 Sandbox Provider；未来真实业务系统必须通过新的 Provider Adapter 接入。
 
-## M1 明确未实现
+## 当前明确未实现
 
-本阶段不包含 Knowledge/RAG、真实客户/订单/物流接口、Ticket、完整 Human Handoff、数据库持久化、Redis、向量数据库、管理后台、Web 前端、登录系统、Multi-Agent、Router、Supervisor、Workflow Engine、微服务或复杂部署。
+本阶段不包含真实知识库连接、向量数据库、真实客户/订单/物流接口、Tenant Context、Multi Tenant、RBAC、Ticket、完整 Human Handoff、管理后台、Multi-Agent、Router、Supervisor、Planner、Workflow Engine、Rust、微服务或复杂部署。
 
 ## Known Limitations
 
@@ -180,8 +197,9 @@ Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文�
 - Trace 使用内存 Repository，重启后数据丢失；M1.1 不接数据库或外部 Trace Backend。
 - M1 不做同一 Conversation 的并发消息串行化和断线续传。
 - Pi 模型目录由安装版本提供；配置不存在的 provider/model 会以 `run.failed` 结束。
-- 真实模型的 Tool 选择质量依赖所选模型和 Provider；CI 只验证确定性的 FakeRuntime 主链路。
+- Mock Knowledge 仅用于验证 Provider/Tool/Grounding 链路，不是正式 RAG 或企业知识库。
+- 真实模型的 Tool 选择质量依赖所选模型和 Provider；CI 使用 FakeRuntime 和 Pi faux provider。
 
-## M2 建议
+## M3 建议
 
-M2 Grounded Support 应保持现有边界，增加 Knowledge 接口、`search_knowledge`、身份/租户上下文，以及客户、订单、物流的沙箱或真实 Adapter；同时覆盖 PRD 的订单澄清、物流异常、Tool 超时和事实 grounding 场景，不在此之前引入 Multi-Agent。
+M3 Human + Safety 建议在现有 Grounding 与 Trace 基础上增加 Ticket、Human Handoff、确定性高风险 Policy、Tool 超时/重试和审计查询。继续保持单 Agent，不在明确需求出现前引入 Multi-Agent 或 Workflow Engine。

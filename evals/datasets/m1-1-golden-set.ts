@@ -5,7 +5,7 @@ export const m11GoldenSet: readonly EvaluationCase[] = [
     id: "knowledge-policy-question",
     category: "knowledge",
     input: ["请问退换货政策是什么？"],
-    expectedTools: [],
+    expectedTools: ["search_knowledge"],
     expectedOutcome: "completed",
   },
   {

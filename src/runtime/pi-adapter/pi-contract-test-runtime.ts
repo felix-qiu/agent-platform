@@ -12,7 +12,15 @@ export interface PiContractTestRuntime {
   readonly model: { readonly provider: string; readonly id: string };
 }
 
-export function createPiContractTestRuntime(): PiContractTestRuntime {
+export interface PiContractTestOptions {
+  readonly toolName?: string;
+  readonly toolArguments?: Record<string, unknown>;
+  readonly finalResponse?: string;
+}
+
+export function createPiContractTestRuntime(
+  options: PiContractTestOptions = {},
+): PiContractTestRuntime {
   const faux = fauxProvider({
     provider: "agent-platform-contract",
     models: [{ id: "contract-model", name: "Contract Model" }],
@@ -20,10 +28,15 @@ export function createPiContractTestRuntime(): PiContractTestRuntime {
   });
   faux.setResponses([
     fauxAssistantMessage(
-      fauxToolCall("get_orders", { customerId: "customer_001" }),
+      fauxToolCall(
+        options.toolName ?? "get_orders",
+        options.toolArguments ?? {
+          customerId: "customer_001",
+        },
+      ),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage("订单已查询并完成回复。"),
+    fauxAssistantMessage(options.finalResponse ?? "订单已查询并完成回复。"),
   ]);
 
   const models = createModels();

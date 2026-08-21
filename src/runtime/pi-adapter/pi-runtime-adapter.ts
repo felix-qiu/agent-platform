@@ -8,6 +8,7 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Api, Model, MutableModels, Usage } from "@earendil-works/pi-ai";
 import type { AgentRuntime, AgentRunInput } from "../agent-runtime.js";
 import type { RuntimeEvent, RuntimeEventBase } from "../runtime-events.js";
+import type { BusinessTool } from "../../tools/tool.js";
 import { errorMessage } from "../../shared/errors.js";
 import { toPiTool } from "./pi-tool-adapter.js";
 import { AsyncEventQueue } from "./async-event-queue.js";
@@ -87,15 +88,15 @@ export class PiRuntimeAdapter implements AgentRuntime {
         });
 
         const toolStartedAt = new Map<string, number>();
-        const toolVersions = new Map(
-          input.agent.tools.map((tool) => [tool.name, tool.version]),
+        const toolsByName = new Map(
+          input.agent.tools.map((tool) => [tool.name, tool]),
         );
         agent.subscribe((event) => {
           for (const converted of convertPiEvent(
             event,
             base,
             toolStartedAt,
-            toolVersions,
+            toolsByName,
           )) {
             if (converted.type === "run.failed") failed = true;
             queue.push(converted);
@@ -155,7 +156,7 @@ function convertPiEvent(
   event: AgentEvent,
   base: () => RuntimeEventBase,
   toolStartedAt: Map<string, number>,
-  toolVersions: ReadonlyMap<string, string>,
+  toolsByName: ReadonlyMap<string, BusinessTool>,
 ): RuntimeEvent[] {
   if (
     event.type === "message_update" &&
@@ -196,17 +197,27 @@ function convertPiEvent(
   }
   if (event.type === "tool_execution_start") {
     toolStartedAt.set(event.toolCallId, Date.now());
-    return [
-      {
+    const tool = requireTool(event.toolName, toolsByName);
+    const events: RuntimeEvent[] = [];
+    if (tool.observability?.kind === "knowledge.search") {
+      events.push({
         ...base(),
-        type: "tool.started",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        toolVersion: requireToolVersion(event.toolName, toolVersions),
-      },
-    ];
+        type: "knowledge.search.started",
+        provider: tool.observability.provider,
+      });
+    }
+    events.push({
+      ...base(),
+      type: "tool.started",
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      toolVersion: tool.version,
+    });
+    return events;
   }
   if (event.type === "tool_execution_end") {
+    const tool = requireTool(event.toolName, toolsByName);
+    const durationMs = toolDuration(event.toolCallId, toolStartedAt);
     if (event.isError) {
       return [
         {
@@ -214,38 +225,48 @@ function convertPiEvent(
           type: "tool.failed",
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          toolVersion: requireToolVersion(event.toolName, toolVersions),
+          toolVersion: tool.version,
           error: {
             code: "TOOL_EXECUTION_FAILED",
             message: extractToolError(event.result),
           },
-          durationMs: toolDuration(event.toolCallId, toolStartedAt),
+          durationMs,
         },
       ];
     }
-    return [
+    const details = extractToolDetails(event.result);
+    const events: RuntimeEvent[] = [
       {
         ...base(),
         type: "tool.completed",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
-        toolVersion: requireToolVersion(event.toolName, toolVersions),
-        result: extractToolDetails(event.result),
-        durationMs: toolDuration(event.toolCallId, toolStartedAt),
+        toolVersion: tool.version,
+        result: details,
+        durationMs,
       },
     ];
+    if (tool.observability?.kind === "knowledge.search") {
+      events.push({
+        ...base(),
+        type: "knowledge.search.completed",
+        provider: tool.observability.provider,
+        matches: extractKnowledgeMatches(details),
+        durationMs,
+      });
+    }
+    return events;
   }
   return [];
 }
 
-function requireToolVersion(
+function requireTool(
   toolName: string,
-  versions: ReadonlyMap<string, string>,
-): string {
-  const version = versions.get(toolName);
-  if (version === undefined)
-    throw new Error(`Unknown tool version: ${toolName}`);
-  return version;
+  tools: ReadonlyMap<string, BusinessTool>,
+): BusinessTool {
+  const tool = tools.get(toolName);
+  if (tool === undefined) throw new Error(`Unknown tool metadata: ${toolName}`);
+  return tool;
 }
 
 function toolDuration(
@@ -262,6 +283,36 @@ function extractToolDetails(result: unknown): unknown {
     return result.details;
   }
   return result;
+}
+
+function extractKnowledgeMatches(details: unknown) {
+  if (typeof details !== "object" || details === null || !("data" in details))
+    return [];
+  const data = details.data;
+  if (typeof data !== "object" || data === null || !("results" in data))
+    return [];
+  const results = data.results;
+  if (!Array.isArray(results)) return [];
+  return results
+    .filter(isKnowledgeMatch)
+    .map(({ id, source, score }) => ({ id, source, score }));
+}
+
+function isKnowledgeMatch(value: unknown): value is {
+  id: string;
+  source: string;
+  score: number;
+} {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "source" in value &&
+    typeof value.source === "string" &&
+    "score" in value &&
+    typeof value.score === "number"
+  );
 }
 
 function extractToolError(result: unknown): string {

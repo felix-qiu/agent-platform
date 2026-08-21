@@ -14,12 +14,18 @@ export type ToolResult<T> =
       readonly error: { readonly code: string; readonly message: string };
     };
 
+export interface ToolObservability {
+  readonly kind: "knowledge.search";
+  readonly provider: string;
+}
+
 export interface BusinessTool<TInput = unknown, TOutput = unknown> {
   readonly name: string;
   readonly version: string;
   readonly description: string;
   readonly inputSchema: JsonObjectSchema;
   readonly permissions: readonly string[];
+  readonly observability?: ToolObservability;
   execute(
     input: TInput,
     context: ToolExecutionContext,

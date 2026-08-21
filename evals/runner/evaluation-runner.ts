@@ -14,6 +14,7 @@ export interface EvaluationResult {
   readonly passed: boolean;
   readonly actualTools: readonly string[];
   readonly actualOutcome: ExpectedOutcome;
+  readonly actualAnswer: string;
 }
 
 export async function runEvaluationCase(
@@ -24,6 +25,7 @@ export async function runEvaluationCase(
   const agent = withEvaluationSetup(baseAgent, evaluationCase);
   const actualTools: string[] = [];
   let actualOutcome: ExpectedOutcome = "failed";
+  let actualAnswer = "";
 
   for await (const event of runtime.run({
     conversationId: `eval_${evaluationCase.id}`,
@@ -32,6 +34,7 @@ export async function runEvaluationCase(
     context: { evaluationCaseId: evaluationCase.id },
   })) {
     if (event.type === "tool.started") actualTools.push(event.toolName);
+    if (event.type === "message.completed") actualAnswer = event.content;
     if (event.type === "run.completed") actualOutcome = "completed";
     if (event.type === "run.failed") actualOutcome = "failed";
   }
@@ -40,9 +43,12 @@ export async function runEvaluationCase(
     caseId: evaluationCase.id,
     passed:
       arraysEqual(actualTools, evaluationCase.expectedTools) &&
-      actualOutcome === evaluationCase.expectedOutcome,
+      actualOutcome === evaluationCase.expectedOutcome &&
+      includesAll(actualAnswer, evaluationCase.expectedAnswerIncludes ?? []) &&
+      excludesAll(actualAnswer, evaluationCase.expectedAnswerExcludes ?? []),
     actualTools,
     actualOutcome,
+    actualAnswer,
   };
 }
 
@@ -91,4 +97,12 @@ function arraysEqual(
     left.length === right.length &&
     left.every((value, index) => value === right[index])
   );
+}
+
+function includesAll(value: string, expected: readonly string[]): boolean {
+  return expected.every((fragment) => value.includes(fragment));
+}
+
+function excludesAll(value: string, expected: readonly string[]): boolean {
+  return expected.every((fragment) => !value.includes(fragment));
 }

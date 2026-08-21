@@ -7,5 +7,7 @@ export interface EvaluationCase {
   readonly input: readonly string[];
   readonly expectedTools: readonly string[];
   readonly expectedOutcome: ExpectedOutcome;
+  readonly expectedAnswerIncludes?: readonly string[];
+  readonly expectedAnswerExcludes?: readonly string[];
   readonly setup?: { readonly failTool?: string };
 }

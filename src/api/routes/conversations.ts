@@ -49,6 +49,19 @@ export async function registerConversationRoutes(
                 ...("toolVersion" in event
                   ? { toolVersion: event.toolVersion }
                   : {}),
+                ...("provider" in event
+                  ? { knowledgeProvider: event.provider }
+                  : {}),
+                ...("matches" in event
+                  ? {
+                      knowledgeMatches: event.matches.map(
+                        ({ source, score }) => ({
+                          source,
+                          score,
+                        }),
+                      ),
+                    }
+                  : {}),
                 ...("durationMs" in event
                   ? { duration: event.durationMs }
                   : {}),
