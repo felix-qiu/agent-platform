@@ -58,6 +58,12 @@ export type RuntimeEvent =
       readonly durationMs: number;
     })
   | (RuntimeEventBase & {
+      readonly type: "knowledge.search.failed";
+      readonly provider: string;
+      readonly errorCode: string;
+      readonly durationMs: number;
+    })
+  | (RuntimeEventBase & {
       readonly type: "run.completed";
       readonly durationMs: number;
     })

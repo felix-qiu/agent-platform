@@ -18,7 +18,7 @@ export function toPiTool(
         ...(signal === undefined ? {} : { signal }),
       });
       if (!result.ok) {
-        throw new RuntimeError(result.error.code, result.error.message);
+        throw new RuntimeError(result.error.code, JSON.stringify(result.error));
       }
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],

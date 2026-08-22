@@ -12,6 +12,11 @@ import type { BusinessTool } from "../../tools/tool.js";
 import { errorMessage } from "../../shared/errors.js";
 import { toPiTool } from "./pi-tool-adapter.js";
 import { AsyncEventQueue } from "./async-event-queue.js";
+import {
+  toolObservationCompleted,
+  toolObservationFailed,
+  toolObservationStarted,
+} from "../../observability/tool-observability.js";
 
 const emptyUsage: Usage = {
   input: 0,
@@ -92,14 +97,28 @@ export class PiRuntimeAdapter implements AgentRuntime {
           input.agent.tools.map((tool) => [tool.name, tool]),
         );
         agent.subscribe((event) => {
-          for (const converted of convertPiEvent(
+          if (failed) return;
+          const convertedEvents = convertPiEvent(
             event,
             base,
             toolStartedAt,
             toolsByName,
-          )) {
-            if (converted.type === "run.failed") failed = true;
+          );
+          for (const converted of convertedEvents) {
             queue.push(converted);
+            if (converted.type === "run.failed") failed = true;
+          }
+          const toolFailure = convertedEvents.find(
+            (converted) => converted.type === "tool.failed",
+          );
+          if (toolFailure !== undefined) {
+            failed = true;
+            queue.push({
+              ...base(),
+              type: "run.failed",
+              error: toolFailure.error,
+              durationMs: Date.now() - startedAt,
+            });
           }
         });
         await agent.prompt(lastMessage.content);
@@ -198,14 +217,7 @@ function convertPiEvent(
   if (event.type === "tool_execution_start") {
     toolStartedAt.set(event.toolCallId, Date.now());
     const tool = requireTool(event.toolName, toolsByName);
-    const events: RuntimeEvent[] = [];
-    if (tool.observability?.kind === "knowledge.search") {
-      events.push({
-        ...base(),
-        type: "knowledge.search.started",
-        provider: tool.observability.provider,
-      });
-    }
+    const events: RuntimeEvent[] = toolObservationStarted(tool, base);
     events.push({
       ...base(),
       type: "tool.started",
@@ -219,6 +231,7 @@ function convertPiEvent(
     const tool = requireTool(event.toolName, toolsByName);
     const durationMs = toolDuration(event.toolCallId, toolStartedAt);
     if (event.isError) {
+      const error = extractToolFailure(event.result);
       return [
         {
           ...base(),
@@ -226,12 +239,10 @@ function convertPiEvent(
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           toolVersion: tool.version,
-          error: {
-            code: "TOOL_EXECUTION_FAILED",
-            message: extractToolError(event.result),
-          },
+          error,
           durationMs,
         },
+        ...toolObservationFailed(tool, error.code, durationMs, base),
       ];
     }
     const details = extractToolDetails(event.result);
@@ -246,15 +257,7 @@ function convertPiEvent(
         durationMs,
       },
     ];
-    if (tool.observability?.kind === "knowledge.search") {
-      events.push({
-        ...base(),
-        type: "knowledge.search.completed",
-        provider: tool.observability.provider,
-        matches: extractKnowledgeMatches(details),
-        durationMs,
-      });
-    }
+    events.push(...toolObservationCompleted(tool, details, durationMs, base));
     return events;
   }
   return [];
@@ -285,34 +288,13 @@ function extractToolDetails(result: unknown): unknown {
   return result;
 }
 
-function extractKnowledgeMatches(details: unknown) {
-  if (typeof details !== "object" || details === null || !("data" in details))
-    return [];
-  const data = details.data;
-  if (typeof data !== "object" || data === null || !("results" in data))
-    return [];
-  const results = data.results;
-  if (!Array.isArray(results)) return [];
-  return results
-    .filter(isKnowledgeMatch)
-    .map(({ id, source, score }) => ({ id, source, score }));
-}
-
-function isKnowledgeMatch(value: unknown): value is {
-  id: string;
-  source: string;
-  score: number;
+function extractToolFailure(result: unknown): {
+  readonly code: string;
+  readonly message: string;
 } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    "source" in value &&
-    typeof value.source === "string" &&
-    "score" in value &&
-    typeof value.score === "number"
-  );
+  const message = extractToolError(result);
+  const parsed = parseSerializedToolError(message);
+  return parsed ?? { code: "TOOL_EXECUTION_FAILED", message };
 }
 
 function extractToolError(result: unknown): string {
@@ -326,6 +308,30 @@ function extractToolError(result: unknown): string {
     }
   }
   return "Tool execution failed";
+}
+
+function parseSerializedToolError(value: string):
+  | {
+      readonly code: string;
+      readonly message: string;
+    }
+  | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "code" in parsed &&
+      typeof parsed.code === "string" &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
+    ) {
+      return { code: parsed.code, message: parsed.message };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 function isTextPart(part: unknown): part is { type: "text"; text: string } {

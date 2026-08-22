@@ -1,9 +1,12 @@
 import { createApp } from "./api/server.js";
 import { loadConfig } from "./config/env.js";
 import { logger } from "./observability/logger.js";
+import { knowledgeProviderConfigFromEnvironment } from "./knowledge/knowledge-provider-factory.js";
 
 const config = loadConfig();
 const app = await createApp({
+  model: { provider: config.LLM_PROVIDER, id: config.LLM_MODEL },
+  knowledgeConfig: knowledgeProviderConfigFromEnvironment(config),
   ...(config.LLM_API_KEY === undefined
     ? {}
     : { llmApiKey: config.LLM_API_KEY }),

@@ -9,18 +9,28 @@ import { InMemoryTraceRepository } from "../observability/in-memory-trace-reposi
 import { AppError, errorMessage } from "../shared/errors.js";
 import { registerConversationRoutes } from "./routes/conversations.js";
 import { registerHealthRoute } from "./routes/health.js";
+import {
+  createKnowledgeProvider,
+  type KnowledgeProviderConfig,
+} from "../knowledge/knowledge-provider-factory.js";
+import type { AgentDefinition } from "../agents/agent-definition.js";
 
 export interface CreateAppOptions {
   readonly runtime?: AgentRuntime;
   readonly llmApiKey?: string;
   readonly logger?: boolean;
+  readonly model?: AgentDefinition["model"];
+  readonly knowledgeConfig?: KnowledgeProviderConfig;
 }
 
 export async function createApp(
   options: CreateAppOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false });
-  const agent = createCustomerServiceAgent();
+  const knowledgeProvider = createKnowledgeProvider(
+    options.knowledgeConfig ?? { provider: "mock" },
+  );
+  const agent = createCustomerServiceAgent(options.model, knowledgeProvider);
   const runtime =
     options.runtime ??
     new PiRuntimeAdapter(

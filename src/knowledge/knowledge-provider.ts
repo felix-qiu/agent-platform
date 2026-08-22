@@ -3,6 +3,7 @@ export type KnowledgeMetadataValue = string | number | boolean;
 export interface KnowledgeSearchContext {
   readonly limit?: number;
   readonly category?: string;
+  readonly signal?: AbortSignal;
 }
 
 export interface KnowledgeResult {

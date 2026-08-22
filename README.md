@@ -1,6 +1,6 @@
 # agent-platform
 
-`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成 **M2 Grounded Support**：Customer Service Agent 通过 Knowledge Tool 和 Sandbox Business Provider，以企业知识和业务数据作为回答事实来源。
+`agent-platform` 是企业业务 Agent 的运行平台。本仓库当前完成 **M2.1 Integration & Observability**：Customer Service Agent 通过 Knowledge Tool 和 Sandbox Business Provider，以企业知识和业务数据作为回答事实来源，并可安全连接 RAGFlow。
 
 ## M1 范围
 
@@ -30,7 +30,27 @@
 - **Knowledge Trace**：`knowledge.search.started/completed` 记录 provider、source、score 和 Trace 关联。
 - **Grounding Evaluation**：验证必须检索、无知识不编造、订单事实来自 Tool、知识与模型冲突时 Knowledge 优先。
 
-预留的 Adapter 边界支持未来接入 RAGFlow、Open WebUI、Dify 或自建知识库；当前占位 Adapter 不包含第三方 SDK、网络调用或数据库依赖。
+## M2.1 Integration & Observability
+
+- **Knowledge Provider Factory**：由应用启动配置选择 Provider；默认使用 Mock，配置 RAGFlow 时启动阶段校验必需参数，禁止失败后静默降级。
+- **RAGFlow Adapter**：使用 Node.js 原生 `fetch` 调用官方 Retrieval API，将不同版本的 chunk 字段封装并映射为平台 `KnowledgeResult`。
+- **可靠失败处理**：覆盖超时、网络异常、认证失败、非 2xx、非法 JSON 和异常响应结构，向上只暴露稳定平台错误码。
+- **Knowledge Failure Trace**：`knowledge.search.failed` 记录 provider、errorCode、durationMs 和 traceId，确保每次检索以 completed 或 failed 结束。
+- **通用 Tool Observability**：Runtime 只调用统一 Observability Mapper，不再直接堆积 Knowledge 专用字段转换。
+- **质量门禁**：本地与 CI 的 `pnpm check` 均包含 format、lint、typecheck、test 和 build。
+
+当前 Knowledge Provider 支持状态：
+
+```text
+KnowledgeProvider
+├── Mock ✅
+├── RAGFlow ✅
+├── Open WebUI Adapter Boundary
+├── Dify Adapter Boundary
+└── Custom Provider（实现统一接口）
+```
+
+Open WebUI 与 Dify 当前仅保留 Adapter Boundary。选择它们会明确失败，不代表已经支持真实调用。
 
 ## 架构
 
@@ -51,7 +71,9 @@ Pi Agent / LLM
    ↓                         ↓
 Knowledge Provider       Business Provider
    ↓                         ↓
-Mock Knowledge          Sandbox Customer/Order
+Provider Factory         Sandbox Customer/Order
+   ↓
+[Mock | RAGFlow HTTP]
 ```
 
 业务模块只依赖 `AgentRuntime` 和平台自有事件。只有 `src/runtime/pi-adapter` 可以导入 Pi 包；替换 Runtime 时，Agent、Tool、Conversation 和 API 无需跟随 Pi 类型重写。
@@ -104,6 +126,24 @@ LLM_API_KEY=your-key
 ```
 
 不要提交 `.env` 或真实密钥。没有 API Key 时项目仍可安装、编译、启动和运行全部测试；只有调用真实 Pi 消息端点会返回 `run.failed` SSE 事件。
+
+Knowledge Provider 默认使用 Mock，无需外部服务：
+
+```dotenv
+KNOWLEDGE_PROVIDER=mock
+```
+
+连接 RAGFlow 时使用以下配置；示例只包含占位值，不要把真实 API Key 提交到仓库：
+
+```dotenv
+KNOWLEDGE_PROVIDER=ragflow
+RAGFLOW_BASE_URL=https://ragflow.example.com
+RAGFLOW_API_KEY=replace-with-runtime-secret
+RAGFLOW_DATASET_IDS=dataset-id-1,dataset-id-2
+RAGFLOW_TIMEOUT_MS=10000
+```
+
+RAGFlow Adapter 调用官方 `POST /api/v1/retrieval`，使用 Bearer 认证，并发送 `question`、`dataset_ids`、`page` 和 `page_size`。配置缺失会在启动阶段失败；服务异常不会自动回退 Mock。
 
 ## 启动
 
@@ -160,6 +200,7 @@ pnpm check
 `check` 与 GitHub Actions 的 `quality` job 使用完全相同的质量门槛，并按顺序执行：
 
 ```bash
+pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
@@ -189,7 +230,7 @@ Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文�
 
 ## 当前明确未实现
 
-本阶段不包含真实知识库连接、向量数据库、真实客户/订单/物流接口、Tenant Context、Multi Tenant、RBAC、Ticket、完整 Human Handoff、管理后台、Multi-Agent、Router、Supervisor、Planner、Workflow Engine、Rust、微服务或复杂部署。
+本阶段不包含 Open WebUI/Dify 真实调用、向量数据库、自建 Embedding/RAG Pipeline、真实客户/订单/物流接口、Tenant Context、Multi Tenant、RBAC、Ticket、完整 Human Handoff、管理后台、Multi-Agent、Router、Supervisor、Planner、Workflow Engine、Rust、微服务或复杂部署。
 
 ## Known Limitations
 
@@ -197,7 +238,8 @@ Tool 通过统一 `BusinessTool` 接口注入，不能访问任意 Shell、文�
 - Trace 使用内存 Repository，重启后数据丢失；M1.1 不接数据库或外部 Trace Backend。
 - M1 不做同一 Conversation 的并发消息串行化和断线续传。
 - Pi 模型目录由安装版本提供；配置不存在的 provider/model 会以 `run.failed` 结束。
-- Mock Knowledge 仅用于验证 Provider/Tool/Grounding 链路，不是正式 RAG 或企业知识库。
+- RAGFlow 只实现检索调用与结果映射；数据摄取、解析、索引和 RAGFlow 运维仍由外部系统负责。
+- Open WebUI 与 Dify 仍是未配置边界，当前选择会 fail fast。
 - 真实模型的 Tool 选择质量依赖所选模型和 Provider；CI 使用 FakeRuntime 和 Pi faux provider。
 
 ## M3 建议

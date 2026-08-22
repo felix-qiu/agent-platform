@@ -14,7 +14,10 @@ describe("search_knowledge Tool", () => {
       name: "search_knowledge",
       version: "1.0.0",
       permissions: ["knowledge:read"],
-      observability: { kind: "knowledge.search", provider: "mock-knowledge" },
+      observability: {
+        namespace: "knowledge.search",
+        attributes: { provider: "mock-knowledge" },
+      },
     });
     expect(result).toMatchObject({
       ok: true,

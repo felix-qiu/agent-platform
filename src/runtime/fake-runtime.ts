@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { BusinessTool } from "../tools/tool.js";
 import type { AgentRuntime, AgentRunInput } from "./agent-runtime.js";
 import type { RuntimeEvent, RuntimeEventBase } from "./runtime-events.js";
+import {
+  toolObservationCompleted,
+  toolObservationFailed,
+  toolObservationStarted,
+} from "../observability/tool-observability.js";
 
 export class FakeRuntime implements AgentRuntime {
   async *run(input: AgentRunInput): AsyncIterable<RuntimeEvent> {
@@ -102,13 +107,7 @@ export class FakeRuntime implements AgentRuntime {
     const toolCallId = randomUUID();
     const startedAt = Date.now();
     const events: RuntimeEvent[] = [];
-    if (tool.observability?.kind === "knowledge.search") {
-      events.push({
-        ...base(),
-        type: "knowledge.search.started",
-        provider: tool.observability.provider,
-      });
-    }
+    events.push(...toolObservationStarted(tool, base));
     events.push({
       ...base(),
       type: "tool.started",
@@ -117,35 +116,34 @@ export class FakeRuntime implements AgentRuntime {
       toolVersion: tool.version,
     });
     const result = await executeUnknownTool(tool, args, input);
-    events.push(
-      result.ok
-        ? {
-            ...base(),
-            type: "tool.completed",
-            toolCallId,
-            toolName: name,
-            toolVersion: tool.version,
-            result,
-            durationMs: Date.now() - startedAt,
-          }
-        : {
-            ...base(),
-            type: "tool.failed",
-            toolCallId,
-            toolName: name,
-            toolVersion: tool.version,
-            error: result.error,
-            durationMs: Date.now() - startedAt,
-          },
-    );
-    if (result.ok && tool.observability?.kind === "knowledge.search") {
-      events.push({
-        ...base(),
-        type: "knowledge.search.completed",
-        provider: tool.observability.provider,
-        matches: extractKnowledgeMatches(result),
-        durationMs: Date.now() - startedAt,
-      });
+    if (result.ok) {
+      const durationMs = Date.now() - startedAt;
+      events.push(
+        {
+          ...base(),
+          type: "tool.completed",
+          toolCallId,
+          toolName: name,
+          toolVersion: tool.version,
+          result,
+          durationMs,
+        },
+        ...toolObservationCompleted(tool, result, durationMs, base),
+      );
+    } else {
+      const durationMs = Date.now() - startedAt;
+      events.push(
+        {
+          ...base(),
+          type: "tool.failed",
+          toolCallId,
+          toolName: name,
+          toolVersion: tool.version,
+          error: result.error,
+          durationMs,
+        },
+        ...toolObservationFailed(tool, result.error.code, durationMs, base),
+      );
     }
     return result.ok
       ? { ok: true, events, result }
@@ -195,14 +193,6 @@ function groundedKnowledgeAnswer(result: { readonly data: unknown }): string {
   return first === undefined
     ? "暂未找到相关企业知识，我无法确认该问题，请联系人工客服获取帮助。"
     : `根据企业知识《${first.title}》：${first.content}`;
-}
-
-function extractKnowledgeMatches(result: { readonly data: unknown }) {
-  return extractKnowledgeResults(result).map(({ id, source, score }) => ({
-    id,
-    source,
-    score,
-  }));
 }
 
 interface GroundedKnowledgeResult {

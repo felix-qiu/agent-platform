@@ -15,8 +15,8 @@ export type ToolResult<T> =
     };
 
 export interface ToolObservability {
-  readonly kind: "knowledge.search";
-  readonly provider: string;
+  readonly namespace: string;
+  readonly attributes: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface BusinessTool<TInput = unknown, TOutput = unknown> {

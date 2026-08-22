@@ -66,6 +66,7 @@ export async function registerConversationRoutes(
                   ? { duration: event.durationMs }
                   : {}),
                 ...("error" in event ? { error: event.error } : {}),
+                ...("errorCode" in event ? { errorCode: event.errorCode } : {}),
               },
               "runtime event",
             );
